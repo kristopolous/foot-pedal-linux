@@ -75,6 +75,25 @@ careful by design:
 
 `show` and `listen` are strictly read-only.
 
+## Web frontend
+
+A zero-dependency web UI (Python stdlib only) wraps the CLI and streams a
+live key feed from the pedal:
+
+    python3 web.py --port 8321
+    # → http://127.0.0.1:8321/
+
+Features:
+- one card per pedal: pick key combo (modifier chips + key grid), mouse
+  button / relative motion, or a string to type; shows the exact spec that
+  will be written before you hit **Apply**
+- live feed: stomp a pedal and watch the keys light up (Server-Sent Events
+  straight from `/dev/input/by-id/usb-1a86_e026-event-kbd`)
+- every Apply shows the `was → now` diff and the read-back verification
+
+Use `--host 0.0.0.0` to reach it from a phone on the same network — there
+is no auth, so keep it on a trusted network.
+
 ## udev / permissions
 
 `/dev/hidraw*` is root-only by default. Either run with `sudo`, or install
@@ -99,7 +118,8 @@ Config channel: HID interface 1, 8-byte reports.
 
 ## Files
 
-- `fpedal.c` — the tool (MIT)
+- `fpedal.c` — the tool (CLI + `--json` for the web UI) (MIT)
+- `web.py`, `web/index.html` — web frontend (Python stdlib only)
 - `vendor/common.c`, `vendor/common.h` — HID key map & encoders, from
   rgerganov/footswitch (MIT, © Radoslav Gerganov, Daniel Manjarres)
 - `50-fpedal.rules` — udev rule for passwordless access

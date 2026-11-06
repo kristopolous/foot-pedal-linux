@@ -155,6 +155,8 @@ static bool read_all_pedals(void) {
     return true;
 }
 
+static bool json_out = false;
+
 /* ---------- printing ---------- */
 
 static const char *modifier_names[8] = {
@@ -376,6 +378,57 @@ static void write_all_pedals(void) {
         write_pedal(&pedals[i]);
 }
 
+/* ---------- JSON output (for the web frontend) ---------- */
+
+static void json_pedal(const pedal_data *p, int idx) {
+    unsigned char t = p->data[1];
+    int x = p->data[5] > 127 ? p->data[5] - 256 : p->data[5];
+    int y = p->data[6] > 127 ? p->data[6] - 256 : p->data[6];
+    int w = p->data[7] > 127 ? p->data[7] - 256 : p->data[7];
+    printf("{\"n\":%d,\"x\":%d,\"y\":%d,\"w\":%d,", idx + 1, x, y, w);
+    if (t == 4) {
+        int len = p->data[0] - 2;
+        printf("\"type\":\"string\",\"mods\":[],\"key\":null,\"button\":null,\"string\":\"");
+        for (int i = 0; i < len && i < 38; i++) {
+            unsigned char c = p->data[2 + i];
+            if (c >= 32 && c < 127) putchar(c);
+            else printf("\\x%02x", c);
+        }
+        printf("\"}");
+        return;
+    }
+    if (t == 0) {
+        printf("\"type\":\"none\",\"mods\":[],\"key\":null,\"button\":null,\"string\":null}");
+        return;
+    }
+    bool is_key = (t == 1 || t == 0x81 || t == 3);
+    bool is_mouse = (t == 2 || t == 3);
+    printf("\"type\":\"%s\",\"mods\":[", is_mouse ? (is_key ? "key+mouse" : "mouse") : "key");
+    bool first_mod = true;
+    for (int i = 0; i < 8; i++)
+        if (p->data[2] & (1 << i)) {
+            printf("%s\"%s\"", first_mod ? "" : ",", modifier_names[i]);
+            first_mod = false;
+        }
+    printf("],\"key\":");
+    if (is_key && p->data[3]) {
+        printf("\"%s\"", decode_byte(p->data[3]));
+    } else {
+        printf("null");
+    }
+    printf(",\"button\":");
+    if (is_mouse && p->data[4]) {
+        putchar('"');
+        if (p->data[4] & 1) printf("left");
+        if (p->data[4] & 2) printf("%sright", (p->data[4] & 1) ? "+" : "");
+        if (p->data[4] & 4) printf("%smiddle", (p->data[4] & 3) ? "+" : "");
+        putchar('"');
+    } else {
+        printf("null");
+    }
+    printf(",\"string\":null}");
+}
+
 /* ---------- commands ---------- */
 
 static void cmd_show(void) {
@@ -384,27 +437,44 @@ static void cmd_show(void) {
         close_device();
         exit(1);
     }
-    printf("FS3-P foot switch (1a86:e026) current configuration:\n");
-    for (int i = 0; i < N_PEDALS; i++) {
-        printf("  pedal %d: ", i + 1);
-        print_pedal(&pedals[i], "");
-        printf("\n");
+    if (json_out) {
+        printf("{\"vid\":\"%04x\",\"pid\":\"%04x\",\"pedals\":[", VID, PID);
+        for (int i = 0; i < N_PEDALS; i++) {
+            if (i) printf(",");
+            json_pedal(&pedals[i], i);
+        }
+        printf("]}\n");
+    } else {
+        printf("FS3-P foot switch (1a86:e026) current configuration:\n");
+        for (int i = 0; i < N_PEDALS; i++) {
+            printf("  pedal %d: ", i + 1);
+            print_pedal(&pedals[i], "");
+            printf("\n");
+        }
     }
     close_device();
 }
 
+static void json_fail(const char *stage, const char *error) {
+    printf("{\"ok\":false,\"stage\":\"%s\",\"error\":\"%s\"}\n", stage, error);
+}
+
 static void cmd_set(int idx, const char *specstr, bool yes) {
     spec s;
-    if (!parse_spec(specstr, &s))
+    if (!parse_spec(specstr, &s)) {
+        if (json_out) json_fail("parse", "invalid spec");
         exit(1);
+    }
 
     open_device();
     if (!read_all_pedals()) {
+        if (json_out) json_fail("read", "failed to read pedals from device");
         close_device();
         exit(1);
     }
     for (int i = 0; i < N_PEDALS; i++) {
         if (!pedal_known_type(&pedals[i])) {
+            if (json_out) json_fail("read", "pedal returned unknown type, aborted");
             fprintf(stderr, "error: pedal %d returned an unknown type; aborting to be safe.\n", i + 1);
             close_device();
             exit(1);
@@ -414,18 +484,22 @@ static void cmd_set(int idx, const char *specstr, bool yes) {
     pedal_data old = pedals[idx];
     spec_to_pedal(idx, &s, &pedals[idx]);
 
-    printf("  pedal %d:\n", idx + 1);
-    printf("    was:  "); print_pedal(&old, ""); printf("\n");
-    printf("    now:  "); print_pedal(&pedals[idx], ""); printf("\n");
+    if (json_out) {
+        if (!yes) { json_fail("confirm", "confirmation required, pass --yes"); exit(1); }
+    } else {
+        printf("  pedal %d:\n", idx + 1);
+        printf("    was:  "); print_pedal(&old, ""); printf("\n");
+        printf("    now:  "); print_pedal(&pedals[idx], ""); printf("\n");
 
-    if (!yes) {
-        char answer[16];
-        printf("Write to pedal firmware? [y/N] ");
-        fflush(stdout);
-        if (!fgets(answer, sizeof(answer), stdin) || (answer[0] != 'y' && answer[0] != 'Y')) {
-            printf("aborted, nothing written.\n");
-            close_device();
-            exit(0);
+        if (!yes) {
+            char answer[16];
+            printf("Write to pedal firmware? [y/N] ");
+            fflush(stdout);
+            if (!fgets(answer, sizeof(answer), stdin) || (answer[0] != 'y' && answer[0] != 'Y')) {
+                printf("aborted, nothing written.\n");
+                close_device();
+                exit(0);
+            }
         }
     }
 
@@ -433,23 +507,35 @@ static void cmd_set(int idx, const char *specstr, bool yes) {
     unsigned char expected[48];
     int expected_len = pedals[idx].data_len;
     memcpy(expected, pedals[idx].data, sizeof(expected));
+    pedal_data newp = pedals[idx];
 
     write_all_pedals();
     usleep(200 * 1000);
 
     /* verify with a read-back */
     if (!read_pedal(idx)) {
+        if (json_out) json_fail("verify", "could not re-read pedal after write");
         fprintf(stderr, "warning: could not re-read pedal %d after write.\n", idx + 1);
         close_device();
         exit(1);
     }
-    printf("  pedal %d after write: ", idx + 1);
-    print_pedal(&pedals[idx], "");
-    printf("\n");
-    if (memcmp(&pedals[idx].data, expected, expected_len) != 0)
-        fprintf(stderr, "warning: read-back differs from what was programmed!\n");
-    else
-        printf("read-back OK.\n");
+    bool readback_ok = memcmp(&pedals[idx].data, expected, expected_len) == 0;
+
+    if (json_out) {
+        printf("{\"ok\":%s,\"pedal\":%d,\"was\":", readback_ok ? "true" : "false", idx + 1);
+        json_pedal(&old, idx);
+        printf(",\"now\":");
+        json_pedal(&newp, idx);
+        printf(",\"readback_ok\":%s}\n", readback_ok ? "true" : "false");
+    } else {
+        printf("  pedal %d after write: ", idx + 1);
+        print_pedal(&pedals[idx], "");
+        printf("\n");
+        if (!readback_ok)
+            fprintf(stderr, "warning: read-back differs from what was programmed!\n");
+        else
+            printf("read-back OK.\n");
+    }
     close_device();
 }
 
@@ -559,9 +645,12 @@ int main(int argc, char **argv) {
     if (argc < 2) { usage(); return 1; }
 
     bool yes = false;
-    for (int i = 2; i < argc; i++)
+    for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--yes") == 0 || strcmp(argv[i], "-y") == 0)
             yes = true;
+        if (strcmp(argv[i], "--json") == 0)
+            json_out = true;
+    }
 
     if (strcmp(argv[1], "show") == 0) {
         cmd_show();
