@@ -1,0 +1,10 @@
+# build output
+/fpedal
+*.o
+
+# the Windows CD contents (proprietary, large)
+FootSwitch-*.msi
+msi/
+
+# reference checkout (not needed for build; vendor/ is the source)
+footswitch/

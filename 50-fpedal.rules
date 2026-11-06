@@ -1,0 +1,3 @@
+# FS3-P USB triple foot switch (PCsensor 1a86:e026) - allow user access
+# to the HID interfaces so `fpedal` works without root.
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="e026", TAG+="uaccess"
