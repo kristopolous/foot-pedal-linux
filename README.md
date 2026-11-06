@@ -1,6 +1,6 @@
 # fpedal — Linux programming tool for the FS3-P USB Triple Foot Switch
 
-<img alt="614FwE2PUXL" src="https://github.com/user-attachments/assets/63cd2f85-3230-4aa8-9d20-9956ed14cb78" />
+<img width=33% alt="614FwE2PUXL" src="https://github.com/user-attachments/assets/63cd2f85-3230-4aa8-9d20-9956ed14cb78" />
 
 `fpedal` programs the **FS3-P USB Triple Foot Switch** (PCsensor / RDingtech,
 USB ID `1a86:e026`) directly from Linux, replacing the Windows-only `.msi`
