@@ -8,3 +8,6 @@ msi/
 
 # reference checkout (not needed for build; vendor/ is the source)
 footswitch/
+fpedal-ui
+gui/keymap_names.h
+__pycache__/

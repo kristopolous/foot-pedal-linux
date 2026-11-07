@@ -91,25 +91,38 @@ can compare what the pedal is programmed to send with what X receives.
 Ctrl-C to quit. Requires `xinput` and `xmodmap` (xorg-x11-apps) and a
 running X11 session.
 
-## Web frontend
+## Graphical front end (`fpedal-ui`)
 
-A zero-dependency web UI (Python stdlib only) wraps the CLI and streams a
-live feed of raw evdev key events from the pedal (the pre-XKB level; use
-`xlisten` for the X-level view):
+A native X11 app (Qt5, no web stack) that replaces the Windows configurator.
+It is a thin GUI over the same `fpedal` CLI — every write still goes through
+the safe read-modify-write + read-back path.
 
-    python3 web.py --port 8321
-    # → http://127.0.0.1:8321/
+    sudo apt install qt6-base-dev   # or qtbase5-dev; needs libX11/libXtst too
+    make gui
+    ./fpedal-ui
 
-Features:
-- one card per pedal: pick key combo (modifier chips + key grid), mouse
-  button / relative motion, or a string to type; shows the exact spec that
-  will be written before you hit **Apply**
-- live feed: stomp a pedal and watch the keys light up (Server-Sent Events
-  straight from `/dev/input/by-id/usb-1a86_e026-event-kbd`)
-- every Apply shows the `was → now` diff and the read-back verification
+One card per pedal:
 
-Use `--host 0.0.0.0` to reach it from a phone on the same network — there
-is no auth, so keep it on a trusted network.
+- **capture combo…** — grabs the keyboard and reads raw X key events, so you
+  physically press the combination you want (including Ctrl / Alt / Win, which
+  a normal focused widget can't always see). It builds the spec for you
+  (modifier-only combos work; `Esc` cancels; keys outside the pedal's keymap
+  are rejected). Release the keys to finish.
+- mouse buttons + relative motion (`x`/`y`/`wheel`) and a spec box you can
+  type into directly for strings or hand-editing.
+- **Apply** writes through `fpedal set` and shows the `was → now` result and
+  the read-back verification; **Clear pedal** unconfigures one pedal.
+- a live log at the bottom prints every X key / mouse event this window
+  receives — focus the window and stomp a pedal to confirm what X actually
+  gets.
+
+Requires a running X11 session (the keyboard-capture feature uses the X
+keyboard grab, so it is X11-only). Build a release against Qt6 by swapping
+the `pkg-config` name `Qt5Widgets` → `Qt6Widgets` in the Makefile.
+
+`make selftest` runs a non-interactive smoke test of the capture path (it
+injects `Ctrl+Shift+T` with XTEST and checks the captured spec); it never
+writes to the pedal.
 
 ## udev / permissions
 
@@ -135,9 +148,11 @@ Config channel: HID interface 1, 8-byte reports.
 
 ## Files
 
-- `fpedal.c` — the tool (CLI + `--json` for the web UI) (MIT)
+- `fpedal.c` — the CLI tool (device I/O + `--json` for the GUI) (MIT)
+- `gui/fpedal_ui.cpp` — native X11/Qt5 graphical front end (`fpedal-ui`)
+- `scripts/gen_keymap.py` — build step: extracts the key map names into a
+  header so the GUI validates keys against exactly what `fpedal` accepts
 - `xlisten.py` — native X11 event listener for the pedal (xinput + xmodmap)
-- `web.py`, `web/index.html` — web frontend (Python stdlib only)
 - `vendor/common.c`, `vendor/common.h` — HID key map & encoders, from
   rgerganov/footswitch (MIT, © Radoslav Gerganov, Daniel Manjarres)
 - `50-fpedal.rules` — udev rule for passwordless access
