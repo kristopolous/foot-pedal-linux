@@ -75,10 +75,27 @@ careful by design:
 
 `show` and `listen` are strictly read-only.
 
+## X event listener (xlisten)
+
+`xlisten.py` is a native (no web stack) listener for the X events the pedal
+produces. It listens to the pedal's own X slave devices — the XKB-mapped
+keysyms, i.e. what the desktop actually receives — via `xinput test`,
+resolves keycodes to key names with the current XKB mapping, and tracks
+modifier state so combos print as e.g. `Ctrl+Win press`:
+
+    python3 xlisten.py                 # auto-detects the pedal's X devices
+    python3 xlisten.py --device 6      # or listen to a specific xinput device
+
+It prints the pedal's firmware mapping (from `fpedal show`) up top so you
+can compare what the pedal is programmed to send with what X receives.
+Ctrl-C to quit. Requires `xinput` and `xmodmap` (xorg-x11-apps) and a
+running X11 session.
+
 ## Web frontend
 
 A zero-dependency web UI (Python stdlib only) wraps the CLI and streams a
-live key feed from the pedal:
+live feed of raw evdev key events from the pedal (the pre-XKB level; use
+`xlisten` for the X-level view):
 
     python3 web.py --port 8321
     # → http://127.0.0.1:8321/
@@ -119,6 +136,7 @@ Config channel: HID interface 1, 8-byte reports.
 ## Files
 
 - `fpedal.c` — the tool (CLI + `--json` for the web UI) (MIT)
+- `xlisten.py` — native X11 event listener for the pedal (xinput + xmodmap)
 - `web.py`, `web/index.html` — web frontend (Python stdlib only)
 - `vendor/common.c`, `vendor/common.h` — HID key map & encoders, from
   rgerganov/footswitch (MIT, © Radoslav Gerganov, Daniel Manjarres)
